@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITSMate | Chat Workspace</title>
+  <meta name="color-scheme" content="light only">
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --bg-accent: #e8f1f0;
+      --panel: rgba(255, 255, 255, 0.88);
+      --panel-strong: #ffffff;
+      --line: rgba(15, 23, 42, 0.08);
+      --text: #0f172a;
+      --muted: #52627a;
+      --muted-2: #70839b;
+      --brand: #0f766e;
+      --brand-2: #0ea5a2;
+      --brand-soft: rgba(15, 118, 110, 0.12);
+      --warn: #d97706;
+      --danger: #b91c1c;
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.10);
+      --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.06);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 10%, rgba(14, 165, 162, 0.18), transparent 28%),
+        radial-gradient(circle at 90% 2%, rgba(217, 119, 6, 0.14), transparent 22%),
+        linear-gradient(180deg, #f6fafb 0%, var(--bg) 100%);
+      overflow: hidden;
+    }
+
+    a { color: inherit; }
+
+    .app-shell {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 12px 24px rgba(15, 118, 110, 0.28);
+      flex: 0 0 auto;
+    }
+
+    .brand-copy { min-width: 0; }
+
+    .eyebrow {
+      margin: 0 0 2px;
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted-2);
+    }
+
+    .headline {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .subheadline {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-decoration: none;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.95fr);
+      gap: 18px;
+      padding: 18px;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      min-height: 0;
+    }
+
+    .chat-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-height: 0;
+    }
+
+    .panel-header {
+      padding: 18px 20px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.0));
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .panel-subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .messages {
+      min-height: 0;
+      padding: 20px;
+      overflow-y: auto;
+      background:
+        linear-gradient(180deg, rgba(15, 118, 110, 0.03), transparent 24%),
+        linear-gradient(rgba(15, 23, 42, 0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 28px;
+    }
+
+    .message {
+      display: flex;
+      margin-bottom: 14px;
+      gap: 10px;
+      animation: fadeUp 180ms ease;
+    }
+
+    .message.user { justify-content: flex-end; }
+
+    .message.bot { justify-content: flex-start; }
+
+    .bubble {
+      max-width: min(760px, 92%);
+      border-radius: 18px;
+      padding: 14px 16px;
+      line-height: 1.55;
+      box-shadow: var(--shadow-soft);
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .bubble.user {
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      color: #fff;
+      border-bottom-right-radius: 6px;
+    }
+
+    .bubble.bot {
+      background: #fff;
+      border: 1px solid rgba(15, 23, 42, 0.07);
+      border-bottom-left-radius: 6px;
+    }
+
+    .bubble.error {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #9f1239;
+    }
+
+    .bubble-meta {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: rgba(82, 98, 122, 0.92);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .bubble.user .bubble-meta {
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .chat-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6px 0 2px;
+      font-size: 0.93rem;
+      background: #fff;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .chat-table th,
+    .chat-table td {
+      border-bottom: 1px solid #e5eef5;
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .chat-table th {
+      background: #f8fbfc;
+      color: #334155;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .chat-table tr:last-child td { border-bottom: none; }
+
+    .chat-table a {
+      color: var(--brand);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .chat-table a:hover { text-decoration: underline; }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.84);
+    }
+
+    .composer-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: end;
+      background: #fff;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 20px;
+      padding: 12px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .input-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .input-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 54px;
+      max-height: 160px;
+      resize: vertical;
+      border: 1px solid transparent;
+      outline: none;
+      border-radius: 14px;
+      padding: 14px 14px;
+      font: inherit;
+      color: var(--text);
+      background: #f8fafc;
+      line-height: 1.45;
+    }
+
+    textarea:focus {
+      border-color: rgba(15, 118, 110, 0.35);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.10);
+      background: #fff;
+    }
+
+    .composer-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      height: 44px;
+      padding: 0 16px;
+      border: 0;
+      border-radius: 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn:hover { filter: brightness(1.03); }
+    .btn:active { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 12px 24px rgba(15, 118, 110, 0.20);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: #eef4f7;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .sidebar {
+      display: grid;
+      grid-template-rows: auto auto auto 1fr;
+      min-height: 0;
+    }
+
+    .sidebar-header {
+      padding: 18px 20px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent);
+    }
+
+    .stack {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 18px;
+      padding: 14px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .card-title {
+      margin: 0 0 10px;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted-2);
+    }
+
+    .profile-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field input {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid #d7e3ea;
+      background: #f8fbfc;
+      padding: 11px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: rgba(15, 118, 110, 0.35);
+      background: #fff;
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.10);
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(180deg, #f8fbfc, #ffffff);
+      border: 1px solid rgba(15, 23, 42, 0.06);
+    }
+
+    .stat-value {
+      display: block;
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      display: grid;
+      gap: 8px;
+      font-size: 0.94rem;
+    }
+
+    .mono {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      color: #203044;
+    }
+
+    details.debug {
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.76);
+    }
+
+    details.debug summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 16px 20px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    details.debug summary::-webkit-details-marker { display: none; }
+
+    details.debug .debug-body {
+      padding: 0 20px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .debug-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .status-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.12);
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      background: #111827;
+      color: #fff;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1080px) {
+      body { overflow: auto; }
+      .workspace {
+        grid-template-columns: 1fr;
+        overflow: visible;
+      }
+      .app-shell { height: auto; min-height: 100vh; }
+      .chat-panel { min-height: 70vh; }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        padding: 14px 16px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .workspace {
+        padding: 12px;
+        gap: 12px;
+      }
+      .composer-card {
+        grid-template-columns: 1fr;
+      }
+      .composer-actions {
+        justify-content: stretch;
+      }
+      .btn { width: 100%; }
+      .debug-grid,
+      .stat-grid {
+        grid-template-columns: 1fr;
+      }
+      .bubble { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark">IT</div>
+        <div class="brand-copy">
+          <p class="eyebrow">ITSMate</p>
+          <h1 class="headline">Service management assistant workspace</h1>
+          <p class="subheadline">A cleaner local front end for testing incidents, counts, and chat memory.</p>
+        </div>
+      </div>
+      <div class="status-row">
+        <span class="status-line"><span class="status-dot"></span>Connected to local backend</span>
+        <button id="reset-chat" class="pill" type="button">Reset chat memory</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="panel chat-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">Conversation</h2>
+          <p class="panel-subtitle">Ask a question in natural language. The assistant remembers this thread while the conversation ID is stored in your browser.</p>
+        </div>
+
+        <div id="messages" class="messages" aria-live="polite">
+          <div class="message bot">
+            <div class="bubble bot">
+              <strong>Hello.</strong> Try a request like <em>"Show open incidents assigned to Beth Anglin"</em> or <em>"Count the number of open incidents by me in the last week"</em>.
+              <div class="bubble-meta">Read-only incident search is enabled for the MVP.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <form id="chat-form" class="composer-card">
+            <div class="input-stack">
+              <label class="input-label" for="message">Message</label>
+              <textarea id="message" placeholder="Show open incidents assigned to Team A" required></textarea>
+            </div>
+            <div class="composer-actions">
+              <button id="send" type="submit" class="btn btn-primary">Send</button>
+            </div>
+          </form>
+        </div>
+
+        <details class="debug">
+          <summary>Debug details</summary>
+          <div class="debug-body">
+            <div class="debug-grid">
+              <div class="card">
+                <p class="card-title">Raw Response</p>
+                <pre id="raw" class="mono">{}</pre>
+              </div>
+              <div class="card">
+                <p class="card-title">Parsed Intent</p>
+                <pre id="intent" class="mono">-</pre>
+              </div>
+            </div>
+            <div class="debug-grid">
+              <div class="card">
+                <p class="card-title">Parameters</p>
+                <pre id="parameters" class="mono">{}</pre>
+              </div>
+              <div class="card">
+                <p class="card-title">Conversation ID</p>
+                <pre id="conversation-id" class="mono"></pre>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <aside class="panel sidebar">
+        <div class="sidebar-header">
+          <h2 class="panel-title">User workspace</h2>
+          <p class="panel-subtitle">Profile, insights, and current thread memory.</p>
+        </div>
+
+        <div class="stack">
+          <section class="card">
+            <p class="card-title">Profile</p>
+            <form id="profile-form" class="profile-grid">
+              <div class="field">
+                <label class="input-label" for="display-name">Display name</label>
+                <input id="display-name" type="text" placeholder="Armin" />
+              </div>
+              <div class="field">
+                <label class="input-label" for="servicenow-username">ServiceNow username</label>
+                <input id="servicenow-username" type="text" placeholder="admin" />
+              </div>
+              <div class="composer-actions" style="justify-content:flex-start;">
+                <button type="submit" class="btn btn-primary">Save profile</button>
+              </div>
+            </form>
+            <p id="profile-status" class="mono" style="margin-top:12px; color: var(--muted);">No profile loaded yet.</p>
+          </section>
+
+          <section class="card">
+            <p class="card-title">Insights</p>
+            <div class="stat-grid">
+              <div class="stat"><span id="total-actions" class="stat-value">0</span><p class="stat-label">Total actions</p></div>
+              <div class="stat"><span id="success-rate" class="stat-value">0%</span><p class="stat-label">Success rate</p></div>
+              <div class="stat"><span id="successes" class="stat-value">0</span><p class="stat-label">Successes</p></div>
+              <div class="stat"><span id="failures" class="stat-value">0</span><p class="stat-label">Failures</p></div>
+            </div>
+          </section>
+
+          <section class="card">
+            <p class="card-title">Starter prompts</p>
+            <ul class="list">
+              <li>List high priority incidents</li>
+              <li>What incidents were created today?</li>
+              <li>Summarize incident INC0012345</li>
+              <li>Count the number of open incidents by me in the last week</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <p class="card-title">Current chat memory</p>
+            <pre id="chat-memory" class="mono">Loading...</pre>
+          </section>
+
+          <section class="card">
+            <p class="card-title">Recent activity</p>
+            <pre id="recent-activity" class="mono">Loading...</pre>
+          </section>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toast" class="toast">Conversation reset</div>
+
+  <script>
+    const currentUserId = "local-tester";
+    const conversationStorageKey = "itsmate-conversation-id";
+    const currentConversationId = localStorage.getItem(conversationStorageKey) || crypto.randomUUID();
+    localStorage.setItem(conversationStorageKey, currentConversationId);
+
+    const form = document.getElementById("chat-form");
+    const profileForm = document.getElementById("profile-form");
+    const resetButton = document.getElementById("reset-chat");
+    const messageInput = document.getElementById("message");
+    const sendButton = document.getElementById("send");
+    const messages = document.getElementById("messages");
+    const intentEl = document.getElementById("intent");
+    const parametersEl = document.getElementById("parameters");
+    const rawEl = document.getElementById("raw");
+    const conversationIdEl = document.getElementById("conversation-id");
+    const displayNameInput = document.getElementById("display-name");
+    const serviceNowUsernameInput = document.getElementById("servicenow-username");
+    const profileStatus = document.getElementById("profile-status");
+    const totalActionsEl = document.getElementById("total-actions");
+    const successRateEl = document.getElementById("success-rate");
+    const successesEl = document.getElementById("successes");
+    const failuresEl = document.getElementById("failures");
+    const recentActivity = document.getElementById("recent-activity");
+    const chatMemory = document.getElementById("chat-memory");
+    const toast = document.getElementById("toast");
+
+    conversationIdEl.textContent = currentConversationId;
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add("show");
+      window.clearTimeout(showToast._timer);
+      showToast._timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderInlineMarkdown(text) {
+      return escapeHtml(text).replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>');
+    }
+
+    function renderMarkdown(text) {
+      const value = String(text || "").trim();
+      if (!value) {
+        return "";
+      }
+
+      const lines = value.split(/\r?\n/);
+      const tableStart = lines.findIndex((line) => line.trim().startsWith("|"));
+      if (tableStart !== -1) {
+        return renderTableMarkdown(lines, tableStart);
+      }
+
+      return escapeHtml(value)
+        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>')
+        .replace(/\n/g, "<br>");
+    }
+
+    function renderTableMarkdown(lines, tableStart) {
+      const tableLines = lines.slice(tableStart).filter((line) => line.trim().startsWith("|"));
+      const rows = tableLines
+        .map((line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim()))
+        .filter((cells) => cells.length > 1 && !cells.every((cell) => /^-+$/.test(cell.replace(/\s/g, ""))));
+
+      if (!rows.length) {
+        return escapeHtml(lines.join("\n")).replace(/\n/g, "<br>");
+      }
+
+      const [header, ...body] = rows;
+      const table = ["<table class='chat-table'>", "<thead><tr>"];
+      header.forEach((cell) => table.push(`<th>${renderInlineMarkdown(cell)}</th>`));
+      table.push("</tr></thead><tbody>");
+      body.forEach((row) => {
+        table.push("<tr>");
+        row.forEach((cell) => table.push(`<td>${renderInlineMarkdown(cell)}</td>`));
+        table.push("</tr>");
+      });
+      table.push("</tbody></table>");
+
+      const remaining = lines.slice(tableStart + tableLines.length).join("\n").trim();
+      return [table.join(""), remaining ? `<div style='margin-top:10px;'>${escapeHtml(remaining).replace(/\n/g, "<br>")}</div>` : ""].join("");
+    }
+
+    function addBubble(text, role, isError = false) {
+      const row = document.createElement("div");
+      row.className = `message ${role}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${role}${isError ? " error" : ""}`;
+      bubble.innerHTML = role === "bot" ? renderMarkdown(text) : escapeHtml(text);
+
+      row.appendChild(bubble);
+      messages.appendChild(row);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function setLoadingState(isLoading) {
+      sendButton.disabled = isLoading;
+      messageInput.disabled = isLoading;
+      sendButton.textContent = isLoading ? "Sending..." : "Send";
+    }
+
+    async function sendMessage(text) {
+      const response = await fetch("/api/teams/webhook/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          user_id: currentUserId,
+          conversation_id: currentConversationId
+        })
+      });
+
+      const data = await response.json();
+      rawEl.textContent = JSON.stringify(data, null, 2);
+
+      if (!response.ok) {
+        intentEl.textContent = "error";
+        parametersEl.textContent = "{}";
+        addBubble(data.reply || "Request failed.", "bot", true);
+        return;
+      }
+
+      intentEl.textContent = data.intent || "-";
+      parametersEl.textContent = JSON.stringify(data.parameters || {}, null, 2);
+      addBubble(data.reply || "No response text.", "bot", false);
+      await refreshInsights();
+      await refreshMemory();
+    }
+
+    function renderInsights(data) {
+      const summary = data.summary || {};
+      const profile = data.profile || {};
+      profileStatus.textContent = profile.servicenow_username
+        ? `Saved profile for ${profile.display_name || currentUserId}\nServiceNow username: ${profile.servicenow_username}`
+        : "No ServiceNow username saved yet.";
+      displayNameInput.value = profile.display_name || "";
+      serviceNowUsernameInput.value = profile.servicenow_username || "";
+      totalActionsEl.textContent = summary.total_actions ?? 0;
+      successRateEl.textContent = `${summary.success_rate ?? 0}%`;
+      successesEl.textContent = summary.successes ?? 0;
+      failuresEl.textContent = summary.failures ?? 0;
+
+      const activities = (data.recent_activity || []).map((item) => {
+        const status = item.success ? "OK" : "ERR";
+        const summary = summarizeActivityText(item.response_summary || item.original_message || "");
+        return `${status} | ${item.timestamp} | ${item.detected_intent} | ${summary}`;
+      });
+      recentActivity.textContent = activities.length ? activities.join("\n\n") : "No recent activity yet.";
+    }
+
+    function summarizeActivityText(text) {
+      const value = String(text || "").trim().replace(/\s+/g, " ");
+      if (!value) {
+        return "(empty)";
+      }
+      const firstLine = value.split(" | ")[0].split("\n")[0];
+      return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+    }
+
+    async function refreshInsights() {
+      const response = await fetch(`/api/teams/insights/?user_id=${encodeURIComponent(currentUserId)}`);
+      const data = await response.json();
+      renderInsights(data);
+    }
+
+    async function refreshMemory() {
+      const response = await fetch(`/api/teams/chat-history/?conversation_id=${encodeURIComponent(currentConversationId)}`);
+      const data = await response.json();
+      const turns = data.turns || [];
+      if (!turns.length) {
+        chatMemory.textContent = "No messages in this conversation yet.";
+        return;
+      }
+
+      chatMemory.textContent = turns.map((turn) => {
+        const role = turn.role === "user" ? "You" : "Bot";
+        const label = turn.intent ? `${role} (${turn.intent})` : role;
+        return `${label}: ${turn.message}`;
+      }).join("\n\n");
+    }
+
+    async function saveProfile(displayName, serviceNowUsername) {
+      const response = await fetch("/api/teams/profile/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_identifier: currentUserId,
+          display_name: displayName,
+          servicenow_username: serviceNowUsername
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        profileStatus.textContent = JSON.stringify(data, null, 2);
+        return;
+      }
+      profileStatus.textContent = `Saved profile for ${data.display_name || currentUserId}\nServiceNow username: ${data.servicenow_username || "(empty)"}`;
+      await refreshInsights();
+      await refreshMemory();
+      showToast("Profile saved");
+    }
+
+    async function resetConversation() {
+      localStorage.removeItem(conversationStorageKey);
+      location.reload();
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const text = messageInput.value.trim();
+      if (!text) return;
+
+      addBubble(text, "user");
+      messageInput.value = "";
+      setLoadingState(true);
+
+      try {
+        await sendMessage(text);
+      } catch (error) {
+        addBubble("Failed to reach ITSMate backend. Check if the server is running.", "bot", true);
+      } finally {
+        setLoadingState(false);
+        messageInput.focus();
+      }
+    });
+
+    profileForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await saveProfile(displayNameInput.value.trim(), serviceNowUsernameInput.value.trim());
+    });
+
+    resetButton.addEventListener("click", resetConversation);
+
+    refreshInsights();
+    refreshMemory();
+  </script>
+</body>
+</html>
