@@ -15,4 +15,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health_check),
     path("api/teams/", include("apps.teams.urls")),
+    path("feedback/", include("apps.feedback.urls")),
 ]

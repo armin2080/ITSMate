@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.utils import timezone
+from datetime import date
 
 
 def _sanitize_query_value(value: str) -> str:
@@ -53,6 +54,24 @@ class IncidentQueryBuilder:
             fragments.append(
                 f"sys_created_on>=javascript:gs.daysAgoStart({int(created_last_days)})"
             )
+
+        created_from = filters.get("created_from")
+        if created_from:
+            # created_from is a date object (YYYY-MM-DD); include from start of day
+            if isinstance(created_from, date):
+                date_str = created_from.strftime("%Y-%m-%d")
+            else:
+                date_str = str(created_from)
+            fragments.append(f"sys_created_on>=javascript:gs.dateGenerate('{date_str} 00:00:00')")
+
+        created_to = filters.get("created_to")
+        if created_to:
+            # created_to is a date object (YYYY-MM-DD); include through end of day
+            if isinstance(created_to, date):
+                date_str = created_to.strftime("%Y-%m-%d")
+            else:
+                date_str = str(created_to)
+            fragments.append(f"sys_created_on<=javascript:gs.dateGenerate('{date_str} 23:59:59')")
 
         if not fragments:
             return "active=true"

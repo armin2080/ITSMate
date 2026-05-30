@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 import re
 from typing import Any
+from datetime import date
+import calendar
 
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
@@ -56,6 +58,9 @@ class ChatOrchestrator:
         parsed_intent = self.intent_parser.parse(message, conversation_history=conversation_history)
         parsed_intent = self._apply_recent_incident_fallback(message, parsed_intent)
         parsed_intent = self._apply_sort_followup_fallback(message, conversation, parsed_intent)
+        # Map natural language month/year phrases (e.g. "March 2024") to explicit
+        # created_from / created_to date filters so we don't fully rely on the LLM.
+        parsed_intent = self._apply_natural_date_range_mapping(message, parsed_intent)
 
         if parsed_intent.intent == "clarify":
             fallback_search = self._build_personal_incident_search(message)
@@ -449,6 +454,64 @@ class ChatOrchestrator:
             "order_by_desc": "sys_created_on",
             "include_created_on": True,
         }
+
+    def _apply_natural_date_range_mapping(self, message: str, parsed_intent: ParsedIntent) -> ParsedIntent:
+        """If the user mentioned a month/year (e.g. 'March 2024'), add created_from/created_to
+        to the parsed_intent.parameters unless those keys already exist.
+        """
+        if not parsed_intent or parsed_intent.intent not in {"search_incidents", "count_incidents"}:
+            return parsed_intent
+
+        parameters = dict(parsed_intent.parameters or {})
+        # don't override explicit LLM-provided dates
+        if parameters.get("created_from") or parameters.get("created_to"):
+            return parsed_intent
+
+        found = self._extract_month_year(message)
+        if not found:
+            return parsed_intent
+
+        month, year = found
+        first_day = date(year, month, 1)
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
+        parameters.setdefault("created_from", first_day)
+        parameters.setdefault("created_to", last_day)
+
+        return type(parsed_intent)(intent=parsed_intent.intent, parameters=parameters, clarification_question=parsed_intent.clarification_question)
+
+    def _extract_month_year(self, text: str) -> tuple[int, int] | None:
+        """Return (month, year) if a month + year is found in the text, else None.
+
+        Recognises full and short month names (case-insensitive), e.g. 'March 2024', 'Mar 2024'.
+        """
+        normalized = text.strip()
+        if not normalized:
+            return None
+        # match e.g. "march 2024" or "mar 2024"
+        pattern = re.compile(r"\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(20\d{2}|19\d{2})\b", re.IGNORECASE)
+        m = pattern.search(normalized)
+        if not m:
+            return None
+        month_str = m.group(1).lower()
+        year = int(m.group(2))
+        month_map = {
+            "jan": 1, "january": 1,
+            "feb": 2, "february": 2,
+            "mar": 3, "march": 3,
+            "apr": 4, "april": 4,
+            "may": 5,
+            "jun": 6, "june": 6,
+            "jul": 7, "july": 7,
+            "aug": 8, "august": 8,
+            "sep": 9, "sept": 9, "september": 9,
+            "oct": 10, "october": 10,
+            "nov": 11, "november": 11,
+            "dec": 12, "december": 12,
+        }
+        month = month_map.get(month_str)
+        if not month:
+            return None
+        return (month, year)
 
     def _should_include_created_on(self, parameters: dict[str, Any]) -> bool:
         return bool(parameters.get("include_created_on") or parameters.get("limit") or parameters.get("order_by_desc"))

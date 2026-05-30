@@ -25,6 +25,8 @@ Allowed parameters:
 - keyword
 - created_today
 - created_last_days
+- created_from         # ISO date string YYYY-MM-DD to search from (inclusive)
+- created_to           # ISO date string YYYY-MM-DD to search to (inclusive)
 - limit
 - order_by_desc
 - include_created_on
@@ -37,6 +39,7 @@ Rules:
 - For open incidents, use state = "open".
 - For incidents created today, set created_today = true.
 - For incidents in the last week, set created_last_days = 7.
+- For incidents in a specific month or date range, set `created_from` and `created_to` to ISO dates (e.g. "2024-03-01" and "2024-03-31").
 - For requests like "last 5 incidents" or "latest 5 incidents", set limit = 5, order_by_desc = "sys_created_on", and include_created_on = true.
 - For a direct incident lookup, use number.
 - Use assigned_to for person names and assignment_group for actual team/group names.

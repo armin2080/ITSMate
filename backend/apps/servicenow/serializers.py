@@ -12,6 +12,8 @@ class IncidentSearchFiltersSerializer(serializers.Serializer):
     keyword = serializers.CharField(required=False, allow_blank=True, max_length=255)
     created_today = serializers.BooleanField(required=False, default=False)
     created_last_days = serializers.IntegerField(required=False, min_value=1, max_value=365)
+    created_from = serializers.DateField(required=False)
+    created_to = serializers.DateField(required=False)
 
 
 class IncidentNumberSerializer(serializers.Serializer):

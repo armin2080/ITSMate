@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.llm",
     "apps.servicenow",
     "apps.audit",
+    "apps.feedback",
 ]
 
 MIDDLEWARE = [
