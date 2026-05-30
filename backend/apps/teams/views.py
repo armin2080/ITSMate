@@ -117,6 +117,7 @@ class TeamsWebhookView(APIView):
                 "reply": result.reply_text,
                 "intent": result.intent,
                 "parameters": result.parameters,
+                "service_now_action": result.service_now_action,
                 "success": result.success,
                 "needs_clarification": result.needs_clarification,
                 "clarification_question": result.clarification_question,

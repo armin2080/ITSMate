@@ -25,6 +25,9 @@ Allowed parameters:
 - keyword
 - created_today
 - created_last_days
+- limit
+- order_by_desc
+- include_created_on
 
 Rules:
 - Never output a raw ServiceNow query.
@@ -34,6 +37,7 @@ Rules:
 - For open incidents, use state = "open".
 - For incidents created today, set created_today = true.
 - For incidents in the last week, set created_last_days = 7.
+- For requests like "last 5 incidents" or "latest 5 incidents", set limit = 5, order_by_desc = "sys_created_on", and include_created_on = true.
 - For a direct incident lookup, use number.
 - Use assigned_to for person names and assignment_group for actual team/group names.
 - If the user asks for notes, comments, or full details for one incident, prefer the incident summarization path and include the incident number.

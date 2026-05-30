@@ -87,7 +87,17 @@ class IntentParser:
         )
 
     def _normalize_parameters(self, parameters: dict) -> dict:
-        normalized = dict(parameters)
+        normalized: dict = {}
+        for key, value in parameters.items():
+            if value is None:
+                continue
+            if isinstance(value, str):
+                stripped_value = value.strip()
+                if not stripped_value:
+                    continue
+                normalized[key] = stripped_value
+                continue
+            normalized[key] = value
         assignment_group = normalized.get("assignment_group")
         assigned_to = normalized.get("assigned_to")
         if assignment_group and not assigned_to and self._looks_like_person_name(assignment_group):

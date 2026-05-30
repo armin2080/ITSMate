@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
+import re
 from typing import Any
 
 from django.conf import settings
@@ -53,6 +54,17 @@ class ChatOrchestrator:
         self._store_turn(conversation, role=ChatTurn.ROLE_USER, message=message)
         conversation_history = self._build_conversation_history(conversation)
         parsed_intent = self.intent_parser.parse(message, conversation_history=conversation_history)
+        parsed_intent = self._apply_recent_incident_fallback(message, parsed_intent)
+        parsed_intent = self._apply_sort_followup_fallback(message, conversation, parsed_intent)
+
+        if parsed_intent.intent == "clarify":
+            fallback_search = self._build_personal_incident_search(message)
+            if fallback_search is not None:
+                parsed_intent = type(parsed_intent)(
+                    intent="search_incidents",
+                    parameters=fallback_search,
+                    clarification_question="",
+                )
 
         if parsed_intent.intent == "clarify":
             reply_text = parsed_intent.clarification_question
@@ -178,9 +190,9 @@ class ChatOrchestrator:
         if not records:
             return "No incidents matched your search."
 
-        lines = [f"Found {len(records)} incident(s).", "", self._incident_table_header(), self._incident_table_separator()]
+        lines = [f"Found {len(records)} incident(s).", "", self._incident_table_header(parameters), self._incident_table_separator(parameters)]
         for record in records[:20]:
-            lines.append(self._format_record_row(record))
+            lines.append(self._format_record_row(record, parameters))
         if len(records) > 20:
             lines.append("")
             lines.append(f"Showing the first 20 of {len(records)} incidents.")
@@ -188,6 +200,8 @@ class ChatOrchestrator:
             lines.append("Filtered to incidents created today.")
         if parameters.get("created_last_days"):
             lines.append(f"Filtered to incidents created in the last {parameters['created_last_days']} day(s).")
+        if self._should_include_created_on(parameters):
+            lines.append("Sorted by created date, newest first.")
         return "\n".join(lines)
 
     def _format_single_incident(self, record: dict[str, Any] | None, number: str) -> str:
@@ -281,16 +295,30 @@ class ChatOrchestrator:
     def _human_field_label(self, value: str) -> str:
         return value.replace("_", " ").strip().title()
 
-    def _incident_table_header(self) -> str:
+    def _incident_table_header(self, parameters: dict[str, Any]) -> str:
+        if self._should_include_created_on(parameters):
+            return "| Incident | Created | State | Priority | Assignee | Short description |"
         return "| Incident | State | Priority | Assignee | Short description |"
 
-    def _incident_table_separator(self) -> str:
+    def _incident_table_separator(self, parameters: dict[str, Any]) -> str:
+        if self._should_include_created_on(parameters):
+            return "| --- | --- | --- | --- | --- | --- |"
         return "| --- | --- | --- | --- | --- |"
 
-    def _format_record_row(self, record: dict[str, Any]) -> str:
+    def _format_record_row(self, record: dict[str, Any], parameters: dict[str, Any]) -> str:
         number = self._human_value(record.get('number'))
         incident_link = self._incident_link(record)
         short_description = self._human_value(record.get('short_description'))
+        created_on = self._human_value(record.get('sys_created_on'))
+        if self._should_include_created_on(parameters):
+            return (
+                f"| [{number}]({incident_link}) | "
+                f"{created_on} | "
+                f"{self._human_state(record.get('state'))} | "
+                f"P{self._human_value(record.get('priority'))} | "
+                f"{self._human_value(record.get('assigned_to'))} | "
+                f"{short_description} |"
+            )
         return (
             f"| [{number}]({incident_link}) | "
             f"{self._human_state(record.get('state'))} | "
@@ -324,11 +352,106 @@ class ChatOrchestrator:
         normalized = dict(parameters)
         if normalized.get("opened_by_me"):
             profile = self.audit_service.get_profile(user_identifier)
-            if not profile or not profile.servicenow_username:
-                raise ValidationError({"opened_by_me": "Counting incidents by me requires your ServiceNow username. Save it in your profile first."})
-            normalized.pop("opened_by_me", None)
-            normalized["opened_by"] = profile.servicenow_username
+            if profile and profile.servicenow_username:
+                normalized.pop("opened_by_me", None)
+                normalized["opened_by"] = profile.servicenow_username
         return normalized
+
+    def _build_personal_incident_search(self, message: str) -> dict[str, Any] | None:
+        normalized_message = " ".join(message.lower().split())
+        if "incident" not in normalized_message and "incidents" not in normalized_message:
+            return None
+        if not re.search(r"\b(my|mine)\b", normalized_message):
+            return None
+
+        parameters: dict[str, Any] = {"opened_by_me": True}
+        if re.search(r"\bopen\b|\bactive\b", normalized_message):
+            parameters["state"] = "open"
+        elif "closed" in normalized_message:
+            parameters["state"] = "closed"
+        elif "resolved" in normalized_message:
+            parameters["state"] = "resolved"
+
+        if "today" in normalized_message:
+            parameters["created_today"] = True
+        elif "last week" in normalized_message or "last 7 days" in normalized_message or "last seven days" in normalized_message:
+            parameters["created_last_days"] = 7
+
+        return parameters
+
+    def _apply_recent_incident_fallback(self, message: str, parsed_intent: ParsedIntent) -> ParsedIntent:
+        recent_search = self._build_recent_incidents_search(message)
+        if recent_search is None:
+            return parsed_intent
+
+        if parsed_intent.intent in {"clarify", "search_incidents"}:
+            merged_parameters = dict(parsed_intent.parameters)
+            merged_parameters.update(recent_search)
+            merged_parameters.pop("created_today", None)
+            merged_parameters.pop("created_last_days", None)
+            return type(parsed_intent)(intent="search_incidents", parameters=merged_parameters, clarification_question="")
+
+        return parsed_intent
+
+    def _apply_sort_followup_fallback(self, message: str, conversation: ChatConversation, parsed_intent: ParsedIntent) -> ParsedIntent:
+        if not self._looks_like_sort_followup(message):
+            return parsed_intent
+
+        previous_search = self._get_last_search_parameters(conversation)
+        if not previous_search:
+            return parsed_intent
+
+        merged_parameters = dict(previous_search)
+        merged_parameters["order_by_desc"] = "sys_created_on"
+        merged_parameters["include_created_on"] = True
+
+        if parsed_intent.intent == "clarify":
+            return type(parsed_intent)(intent="search_incidents", parameters=merged_parameters, clarification_question="")
+
+        if parsed_intent.intent == "search_incidents":
+            merged_parameters.update(parsed_intent.parameters)
+            return type(parsed_intent)(intent="search_incidents", parameters=merged_parameters, clarification_question="")
+
+        return parsed_intent
+
+    def _looks_like_sort_followup(self, message: str) -> bool:
+        normalized_message = " ".join(message.lower().split())
+        if not any(token in normalized_message for token in ("sort", "sorted", "order", "ordered", "arrange", "ascending", "descending")):
+            return False
+        return "created" in normalized_message or "date" in normalized_message or "newest" in normalized_message or "oldest" in normalized_message
+
+    def _get_last_search_parameters(self, conversation: ChatConversation) -> dict[str, Any] | None:
+        previous_turn = (
+            conversation.turns.filter(role=ChatTurn.ROLE_BOT, intent="search_incidents", success=True)
+            .order_by("-created_at")
+            .first()
+        )
+        if not previous_turn:
+            return None
+        parameters = previous_turn.parameters if isinstance(previous_turn.parameters, dict) else {}
+        return dict(parameters)
+
+    def _build_recent_incidents_search(self, message: str) -> dict[str, Any] | None:
+        normalized_message = " ".join(message.lower().split())
+        if "incident" not in normalized_message and "incidents" not in normalized_message:
+            return None
+
+        recent_match = re.search(
+            r"\b(?:last|latest|most recent|newest)\s+(\d+)\s+incidents?\b",
+            normalized_message,
+        )
+        if not recent_match:
+            return None
+
+        limit = int(recent_match.group(1))
+        return {
+            "limit": limit,
+            "order_by_desc": "sys_created_on",
+            "include_created_on": True,
+        }
+
+    def _should_include_created_on(self, parameters: dict[str, Any]) -> bool:
+        return bool(parameters.get("include_created_on") or parameters.get("limit") or parameters.get("order_by_desc"))
 
     def _get_or_create_conversation(self, user_identifier: str, conversation_id: str | None) -> ChatConversation:
         stable_conversation_id = conversation_id or f"{user_identifier}-default"
