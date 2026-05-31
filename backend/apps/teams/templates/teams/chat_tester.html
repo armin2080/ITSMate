@@ -116,6 +116,18 @@
       justify-content: flex-end;
     }
 
+    .auth-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .auth-meta strong {
+      color: var(--text);
+    }
+
     .pill {
       display: inline-flex;
       align-items: center;
@@ -129,6 +141,10 @@
       font-size: 0.9rem;
       text-decoration: none;
       box-shadow: var(--shadow-soft);
+      appearance: none;
+      border: none;
+      cursor: pointer;
+      font: inherit;
     }
 
     .pill-dot {
@@ -632,6 +648,13 @@
         </div>
       </div>
       <div class="status-row">
+        {% if request.user.is_authenticated %}
+          <span class="auth-meta">Signed in as <strong>{{ request.user.get_username }}</strong></span>
+          <form action="{% url 'accounts-logout' %}" method="post" style="display:inline; margin:0;">
+            {% csrf_token %}
+            <button class="pill" type="submit">Sign out</button>
+          </form>
+        {% endif %}
         <span class="status-line"><span class="status-dot"></span>Connected to local backend</span>
         <a href="/feedback/" class="pill" style="text-decoration:none;">Send feedback</a>
         <button id="reset-chat" class="pill" type="button">Reset chat memory</button>
@@ -765,7 +788,7 @@
   <div id="toast" class="toast">Conversation reset</div>
 
   <script>
-    const currentUserId = "local-tester";
+    const currentUserId = "{{ current_user_identifier|default:'local-tester'|escapejs }}";
     const conversationStorageKey = "itsmate-conversation-id";
 
     function createConversationId() {
@@ -843,6 +866,14 @@
       toast.classList.add("show");
       window.clearTimeout(showToast._timer);
       showToast._timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    function getCookie(name) {
+      const cookieValue = document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
+      if (!cookieValue) {
+        return "";
+      }
+      return decodeURIComponent(cookieValue.split("=").slice(1).join("="));
     }
 
     function escapeHtml(text) {
@@ -956,7 +987,10 @@
     async function sendMessage(text) {
       const response = await fetch("/api/teams/webhook/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCookie("csrftoken"),
+        },
         body: JSON.stringify({
           message: text,
           user_id: currentUserId,
@@ -1077,7 +1111,10 @@
     async function saveProfile(displayName, serviceNowUsername) {
       const response = await fetch("/api/teams/profile/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCookie("csrftoken"),
+        },
         body: JSON.stringify({
           user_identifier: currentUserId,
           display_name: displayName,

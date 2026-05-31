@@ -14,15 +14,20 @@ class ServiceNowClient:
         instance_url: str | None = None,
         username: str | None = None,
         password: str | None = None,
+        access_token: str | None = None,
         timeout: int | None = None,
     ) -> None:
         self.instance_url = (instance_url or settings.SERVICENOW_INSTANCE_URL).rstrip("/")
         self.username = username if username is not None else settings.SERVICENOW_USERNAME
         self.password = password if password is not None else settings.SERVICENOW_PASSWORD
+        self.access_token = access_token
         self.timeout = timeout if timeout is not None else settings.SERVICENOW_TIMEOUT_SECONDS
         self.session = requests.Session()
-        self.session.auth = (self.username, self.password)
         self.session.headers.update({"Accept": "application/json"})
+        if self.access_token:
+            self.session.headers.update({"Authorization": f"Bearer {self.access_token}"})
+        elif self.username or self.password:
+            self.session.auth = (self.username, self.password)
         self.query_builder = IncidentQueryBuilder()
 
     def search_incidents(self, filters: dict) -> list[dict]:
@@ -98,6 +103,52 @@ class ServiceNowClient:
         results = response.json().get("result", [])
         return results[0] if results else None
 
+    def update_incident(self, sys_id: str, fields: dict) -> dict | None:
+        if not sys_id:
+            return None
+
+        payload = dict(fields)
+        if payload.get("comment"):
+            payload["comments"] = payload.pop("comment")
+        if payload.get("work_notes"):
+            payload["work_notes"] = payload.pop("work_notes")
+
+        if payload.get("assigned_to"):
+            user_sys_id = self.resolve_user_sys_id(str(payload["assigned_to"]))
+            if user_sys_id:
+                payload["assigned_to"] = user_sys_id
+
+        if payload.get("assignment_group"):
+            group_sys_id = self.resolve_group_sys_id(str(payload["assignment_group"]))
+            if group_sys_id:
+                payload["assignment_group"] = group_sys_id
+
+        state = payload.get("state")
+        if isinstance(state, str):
+            normalized_state = state.strip().lower()
+            state_map = {
+                "new": "1",
+                "open": "1",
+                "in progress": "2",
+                "in_progress": "2",
+                "on hold": "3",
+                "on_hold": "3",
+                "resolved": "6",
+                "closed": "7",
+                "canceled": "8",
+                "cancelled": "8",
+            }
+            payload["state"] = state_map.get(normalized_state, state)
+
+        response = self.session.patch(
+            f"{self.instance_url}/api/now/table/incident/{sys_id}",
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        result = response.json().get("result", {})
+        return result if isinstance(result, dict) else None
+
     def _sort_incidents(self, results: list[dict], order_by_desc: str | None = None) -> list[dict]:
         if not results or not order_by_desc:
             return results
@@ -134,3 +185,50 @@ class ServiceNowClient:
         response.raise_for_status()
         results = response.json().get("result", [])
         return list(reversed(results))
+
+    def get_user_record(self, identifier: str) -> dict | None:
+        response = self.session.get(
+            f"{self.instance_url}/api/now/table/sys_user",
+            params={
+                "sysparm_query": f"user_name={identifier}^ORemail={identifier}",
+                "sysparm_limit": 1,
+                "sysparm_display_value": "true",
+                "sysparm_fields": "sys_id,user_name,name,first_name,last_name,email",
+            },
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        results = response.json().get("result", [])
+        return results[0] if results else None
+
+    def resolve_user_sys_id(self, identifier: str) -> str | None:
+        response = self.session.get(
+            f"{self.instance_url}/api/now/table/sys_user",
+            params={
+                "sysparm_query": f"user_name={identifier}^ORemail={identifier}^ORnameLIKE{identifier}",
+                "sysparm_limit": 1,
+                "sysparm_fields": "sys_id",
+            },
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        results = response.json().get("result", [])
+        if not results:
+            return None
+        return str(results[0].get("sys_id") or "").strip() or None
+
+    def resolve_group_sys_id(self, identifier: str) -> str | None:
+        response = self.session.get(
+            f"{self.instance_url}/api/now/table/sys_user_group",
+            params={
+                "sysparm_query": f"nameLIKE{identifier}",
+                "sysparm_limit": 1,
+                "sysparm_fields": "sys_id",
+            },
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        results = response.json().get("result", [])
+        if not results:
+            return None
+        return str(results[0].get("sys_id") or "").strip() or None

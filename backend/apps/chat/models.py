@@ -5,6 +5,9 @@ class ChatConversation(models.Model):
     conversation_id = models.CharField(max_length=255, unique=True)
     user_identifier = models.CharField(max_length=255)
     title = models.CharField(max_length=255, blank=True, default="")
+    pending_service_now_action = models.CharField(max_length=128, blank=True, default="")
+    pending_service_now_parameters = models.JSONField(default=dict, blank=True)
+    pending_service_now_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

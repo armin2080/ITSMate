@@ -1,16 +1,24 @@
+from django.contrib.auth.mixins import LoginRequiredMixin
+from requests import RequestException
 from django.views.generic import TemplateView
 from rest_framework import serializers
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import AuditService
 from apps.chat.models import ChatConversation
 from apps.chat.services import ChatOrchestrator
+from apps.servicenow.client import ServiceNowClient
 
 
-class TeamsChatTesterView(TemplateView):
+class TeamsChatTesterView(LoginRequiredMixin, TemplateView):
     template_name = "teams/chat_tester.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["current_user_identifier"] = self.request.user.get_username()
+        return context
 
 
 class UserProfileSerializer(serializers.Serializer):
@@ -20,14 +28,14 @@ class UserProfileSerializer(serializers.Serializer):
 
 
 class TeamsUserProfileView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = UserProfileSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         audit_service = AuditService()
         profile = audit_service.update_profile(
-            user_identifier=serializer.validated_data["user_identifier"],
+            user_identifier=request.user.get_username(),
             display_name=serializer.validated_data.get("display_name", ""),
             servicenow_username=serializer.validated_data.get("servicenow_username", ""),
         )
@@ -42,16 +50,15 @@ class TeamsUserProfileView(APIView):
 
 
 class TeamsInsightsView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user_identifier = request.query_params.get("user_id") or request.query_params.get("user_identifier") or "local-tester"
         audit_service = AuditService()
-        return Response(audit_service.build_user_insights(user_identifier))
+        return Response(audit_service.build_user_insights(request.user.get_username()))
 
 
 class TeamsChatHistoryView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         conversation_id = request.query_params.get("conversation_id")
@@ -59,8 +66,8 @@ class TeamsChatHistoryView(APIView):
             return Response({"detail": "conversation_id is required."}, status=400)
 
         conversation = ChatConversation.objects.filter(conversation_id=conversation_id).first()
-        if not conversation:
-            return Response({"conversation_id": conversation_id, "turns": []})
+        if not conversation or conversation.user_identifier != request.user.get_username():
+            return Response({"detail": "Conversation not found."}, status=404)
 
         turns = list(
             conversation.turns.order_by("created_at").values(
@@ -97,6 +104,8 @@ class TeamsWebhookView(APIView):
                 status=400,
             )
 
+        service_now_client = self._build_service_now_client(request)
+
         user_identifier = (
             payload.get("user_id")
             or self._extract_text(payload, ("from", "id"))
@@ -106,7 +115,7 @@ class TeamsWebhookView(APIView):
         )
         conversation_id = payload.get("conversation_id") or self._extract_text(payload, ("conversation", "id")) or payload.get("conversationId")
 
-        orchestrator = ChatOrchestrator()
+        orchestrator = ChatOrchestrator(service_now_client=service_now_client)
         result = orchestrator.handle_message(
             message=message,
             user_identifier=user_identifier,
@@ -123,6 +132,13 @@ class TeamsWebhookView(APIView):
                 "clarification_question": result.clarification_question,
             }
         )
+
+    def _build_service_now_client(self, request) -> ServiceNowClient | None:
+        username = str(request.session.get("servicenow_username") or "").strip()
+        password = str(request.session.get("servicenow_password") or "").strip()
+        if not username or not password:
+            return ServiceNowClient()
+        return ServiceNowClient(username=username, password=password)
 
     def _extract_text(self, payload: dict, path: tuple[str, ...]) -> str | None:
         current_value: object = payload

@@ -75,6 +75,11 @@ Recommended optional variables:
 - `SERVICENOW_MAX_RESULTS=10`
 - `ALLOWED_HOSTS=localhost,127.0.0.1`
 
+Browser sign-in now uses your ServiceNow username and password directly.
+No OAuth variables are needed for the `/accounts/login/` page.
+
+The backend still uses the configured ServiceNow credentials from `SERVICENOW_USERNAME` and `SERVICENOW_PASSWORD` for the read-only chat tools.
+
 ## How the Teams Integration Works
 
 The MVP exposes a webhook-style endpoint at `POST /api/teams/webhook/`.
@@ -160,7 +165,7 @@ SQLite is used by default for the MVP. The settings module also supports switchi
 
 ## Future Roadmap
 
-- OAuth and per-user ServiceNow authentication
+- ServiceNow-backed OAuth sign-in for the browser workspace
 - incident updates with confirmation
 - incident creation
 - change request support

@@ -13,6 +13,7 @@ def health_check(_request):
 urlpatterns = [
     path("", RedirectView.as_view(pattern_name="teams-chat-tester", permanent=False)),
     path("admin/", admin.site.urls),
+    path("accounts/", include("apps.accounts.urls")),
     path("health/", health_check),
     path("api/teams/", include("apps.teams.urls")),
     path("feedback/", include("apps.feedback.urls")),

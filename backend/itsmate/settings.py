@@ -33,12 +33,18 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "apps.accounts",
     "apps.teams",
     "apps.chat",
     "apps.llm",
     "apps.servicenow",
     "apps.audit",
     "apps.feedback",
+]
+
+AUTHENTICATION_BACKENDS = [
+    "apps.accounts.backends.ServiceNowAuthenticationBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 MIDDLEWARE = [
@@ -113,6 +119,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LOGIN_URL = "accounts-login"
+LOGIN_REDIRECT_URL = "teams-chat-tester"
+LOGOUT_REDIRECT_URL = "accounts-login"
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
@@ -121,7 +130,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PARSER_CLASSES": [
         "rest_framework.parsers.JSONParser",
     ],
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],

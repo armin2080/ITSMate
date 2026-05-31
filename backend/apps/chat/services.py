@@ -54,6 +54,13 @@ class ChatOrchestrator:
     def handle_message(self, message: str, user_identifier: str, conversation_id: str | None = None) -> ChatResult:
         conversation = self._get_or_create_conversation(user_identifier=user_identifier, conversation_id=conversation_id)
         self._store_turn(conversation, role=ChatTurn.ROLE_USER, message=message)
+
+        pending_action = self._get_pending_action(conversation)
+        if pending_action:
+            confirmation_result = self._handle_pending_action(message, user_identifier, conversation, pending_action)
+            if confirmation_result is not None:
+                return confirmation_result
+
         conversation_history = self._build_conversation_history(conversation)
         parsed_intent = self.intent_parser.parse(message, conversation_history=conversation_history)
         parsed_intent = self._apply_recent_incident_fallback(message, parsed_intent)
@@ -117,6 +124,22 @@ class ChatOrchestrator:
                 reply_text = self._format_incident_summary(record, number)
                 service_now_action = "summarize_incident"
                 parameters = {"number": number}
+            elif parsed_intent.intent == "update_incident":
+                number = str(parsed_intent.parameters.get("number") or "").strip()
+                if not number:
+                    raise ValidationError({"number": "Incident number is required."})
+                update_fields = self._extract_update_fields(parsed_intent.parameters)
+                if not update_fields:
+                    raise ValidationError({"updates": "Provide at least one field to update."})
+                parameters = {"number": number, **update_fields}
+                reply_text = self._format_update_confirmation(number, update_fields)
+                self._set_pending_action(
+                    conversation,
+                    action="update_incident",
+                    parameters=parameters,
+                    message=reply_text,
+                )
+                service_now_action = "update_incident_confirmation_requested"
             elif parsed_intent.intent == "count_incidents":
                 parameters = self._normalize_count_parameters(parsed_intent.parameters, user_identifier=user_identifier)
                 count = self.service_now_client.count_incidents(parameters)
@@ -171,7 +194,7 @@ class ChatOrchestrator:
             detected_intent=parsed_intent.intent,
             parameters=parameters,
             service_now_action=service_now_action,
-            success=True,
+            success=service_now_action != "update_incident_confirmation_requested",
             response_summary=reply_text,
         )
         self._store_turn(
@@ -181,13 +204,13 @@ class ChatOrchestrator:
             intent=parsed_intent.intent,
             parameters=parameters,
             service_now_action=service_now_action,
-            success=True,
+            success=service_now_action != "update_incident_confirmation_requested",
         )
         return ChatResult(
             reply_text=reply_text,
             intent=parsed_intent.intent,
             parameters=parameters,
-            success=True,
+            success=service_now_action != "update_incident_confirmation_requested",
             service_now_action=service_now_action,
         )
 
@@ -583,3 +606,207 @@ class ChatOrchestrator:
 
     def _format_validation_error(self, exc: ValidationError) -> str:
         return f"I need a valid incident filter before I can continue: {exc.detail}"
+
+    def _format_update_confirmation(self, number: str, update_fields: dict[str, Any]) -> str:
+        details = ", ".join(f"{key}={self._human_value(value)}" for key, value in sorted(update_fields.items()))
+        return f"I’m ready to update incident {number} with {details}. Reply 'yes' to confirm or 'cancel' to stop."
+
+    def _get_pending_action(self, conversation: ChatConversation) -> dict[str, Any] | None:
+        action = str(getattr(conversation, "pending_service_now_action", "") or "").strip()
+        parameters = getattr(conversation, "pending_service_now_parameters", {})
+        if not action or not isinstance(parameters, dict):
+            return None
+        return {"action": action, "parameters": dict(parameters)}
+
+    def _set_pending_action(self, conversation: ChatConversation, *, action: str, parameters: dict[str, Any], message: str) -> None:
+        conversation.pending_service_now_action = action
+        conversation.pending_service_now_parameters = parameters
+        conversation.pending_service_now_message = message
+        conversation.save(update_fields=["pending_service_now_action", "pending_service_now_parameters", "pending_service_now_message", "updated_at"])
+
+    def _clear_pending_action(self, conversation: ChatConversation) -> None:
+        conversation.pending_service_now_action = ""
+        conversation.pending_service_now_parameters = {}
+        conversation.pending_service_now_message = ""
+        conversation.save(update_fields=["pending_service_now_action", "pending_service_now_parameters", "pending_service_now_message", "updated_at"])
+
+    def _handle_pending_action(
+        self,
+        message: str,
+        user_identifier: str,
+        conversation: ChatConversation,
+        pending_action: dict[str, Any],
+    ) -> ChatResult | None:
+        normalized_message = " ".join(message.lower().split())
+        pending_parameters = dict(pending_action.get("parameters", {}))
+
+        if self._is_cancel_message(normalized_message):
+            self._clear_pending_action(conversation)
+            reply_text = "Canceled the pending update."
+            self.audit_service.record(
+                user_identifier=user_identifier,
+                original_message=message,
+                detected_intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_canceled",
+                success=False,
+                response_summary=reply_text,
+            )
+            self._store_turn(
+                conversation,
+                role=ChatTurn.ROLE_BOT,
+                message=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_canceled",
+                success=False,
+            )
+            return ChatResult(
+                reply_text=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                success=False,
+                service_now_action="update_incident_canceled",
+            )
+
+        if not self._is_confirmation_message(normalized_message):
+            reply_text = str(getattr(conversation, "pending_service_now_message", "") or "Reply 'yes' to confirm or 'cancel' to stop.")
+            self.audit_service.record(
+                user_identifier=user_identifier,
+                original_message=message,
+                detected_intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_confirmation_requested",
+                success=False,
+                response_summary=reply_text,
+            )
+            self._store_turn(
+                conversation,
+                role=ChatTurn.ROLE_BOT,
+                message=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_confirmation_requested",
+                success=False,
+            )
+            return ChatResult(
+                reply_text=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                success=False,
+                needs_clarification=True,
+                clarification_question=reply_text,
+                service_now_action="update_incident_confirmation_requested",
+            )
+
+        number = str(pending_parameters.get("number") or "").strip()
+        update_fields = {key: value for key, value in pending_parameters.items() if key != "number"}
+        record = self.service_now_client.get_incident_by_number(number)
+        if not record:
+            self._clear_pending_action(conversation)
+            reply_text = f"I could not find incident {number} to update."
+            self.audit_service.record(
+                user_identifier=user_identifier,
+                original_message=message,
+                detected_intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_not_found",
+                success=False,
+                response_summary=reply_text,
+            )
+            self._store_turn(
+                conversation,
+                role=ChatTurn.ROLE_BOT,
+                message=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_not_found",
+                success=False,
+            )
+            return ChatResult(
+                reply_text=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                success=False,
+                service_now_action="update_incident_not_found",
+            )
+
+        updated = self.service_now_client.update_incident(str(record.get("sys_id") or "").strip(), update_fields)
+        self._clear_pending_action(conversation)
+        if not updated:
+            reply_text = f"I could not update incident {number}."
+            self.audit_service.record(
+                user_identifier=user_identifier,
+                original_message=message,
+                detected_intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_failed",
+                success=False,
+                response_summary=reply_text,
+            )
+            self._store_turn(
+                conversation,
+                role=ChatTurn.ROLE_BOT,
+                message=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                service_now_action="update_incident_failed",
+                success=False,
+            )
+            return ChatResult(
+                reply_text=reply_text,
+                intent="update_incident",
+                parameters=pending_parameters,
+                success=False,
+                service_now_action="update_incident_failed",
+            )
+
+        reply_text = self._format_update_result(number, updated, update_fields)
+        self.audit_service.record(
+            user_identifier=user_identifier,
+            original_message=message,
+            detected_intent="update_incident",
+            parameters=pending_parameters,
+            service_now_action="update_incident",
+            success=True,
+            response_summary=reply_text,
+        )
+        self._store_turn(
+            conversation,
+            role=ChatTurn.ROLE_BOT,
+            message=reply_text,
+            intent="update_incident",
+            parameters=pending_parameters,
+            service_now_action="update_incident",
+            success=True,
+        )
+        return ChatResult(
+            reply_text=reply_text,
+            intent="update_incident",
+            parameters=pending_parameters,
+            success=True,
+            service_now_action="update_incident",
+        )
+
+    def _is_confirmation_message(self, message: str) -> bool:
+        return message in {"yes", "y", "confirm", "confirmed", "do it", "proceed", "apply"}
+
+    def _is_cancel_message(self, message: str) -> bool:
+        return message in {"cancel", "stop", "abort", "never mind", "nevermind"}
+
+    def _format_update_result(self, number: str, updated_record: dict[str, Any], update_fields: dict[str, Any]) -> str:
+        changes = ", ".join(sorted(update_fields.keys()))
+        state = self._human_state(updated_record.get("state"))
+        return f"Updated incident {number}: {changes}. Current state: {state}."
+
+    def _extract_update_fields(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"state", "priority", "assignment_group", "assigned_to", "comment", "work_notes"}
+        update_fields: dict[str, Any] = {}
+        for key in allowed:
+            value = parameters.get(key)
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            update_fields[key] = value
+        return update_fields

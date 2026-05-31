@@ -8,6 +8,7 @@ class IntentParseSerializer(serializers.Serializer):
             ("count_incidents", "count_incidents"),
             ("get_incident_by_number", "get_incident_by_number"),
             ("summarize_incident", "summarize_incident"),
+            ("update_incident", "update_incident"),
             ("clarify", "clarify"),
         ]
     )
