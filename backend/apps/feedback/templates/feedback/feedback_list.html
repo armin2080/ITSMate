@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITSMate | Feedback</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef3f7;
+      --panel: rgba(255, 255, 255, 0.9);
+      --text: #102033;
+      --muted: #5c6b7c;
+      --brand: #0f766e;
+      --line: rgba(16, 32, 51, 0.1);
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px 20px;
+      font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 20%, rgba(14, 165, 162, 0.16), transparent 24%),
+        linear-gradient(180deg, #f7fbfc, var(--bg));
+    }
+
+    main { width: min(100%, 1000px); margin: 0 auto; }
+    header { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-bottom: 24px; }
+    h1 { margin: 0 0 6px; font-size: 2rem; }
+    p { margin: 0; color: var(--muted); }
+
+    .btn {
+      padding: 11px 16px;
+      border-radius: 12px;
+      color: #fff;
+      background: var(--brand);
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .feedback-list { display: grid; gap: 16px; }
+    .feedback {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 14px; color: var(--muted); font-size: 0.9rem; }
+    .message { margin: 0; color: var(--text); white-space: pre-wrap; line-height: 1.6; }
+    .empty { padding: 32px; text-align: center; border-radius: 20px; background: var(--panel); }
+
+    @media (max-width: 640px) {
+      header { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Submitted feedback</h1>
+        <p>Newest submissions appear first.</p>
+      </div>
+      <a class="btn" href="{% url 'teams-chat-tester' %}">Return to workspace</a>
+    </header>
+
+    <section class="feedback-list">
+      {% for feedback in feedbacks %}
+        <article class="feedback">
+          <div class="meta">
+            <strong>{{ feedback.name|default:"Anonymous" }}</strong>
+            {% if feedback.email %}<span>{{ feedback.email }}</span>{% endif %}
+            <time datetime="{{ feedback.created_at|date:'c' }}">{{ feedback.created_at|date:"M j, Y, H:i" }}</time>
+          </div>
+          <p class="message">{{ feedback.message }}</p>
+        </article>
+      {% empty %}
+        <div class="empty">
+          <p>No feedback has been submitted yet.</p>
+        </div>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>

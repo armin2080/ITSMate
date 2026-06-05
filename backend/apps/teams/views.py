@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from requests import RequestException
 from django.views.generic import TemplateView
@@ -18,6 +19,10 @@ class TeamsChatTesterView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["current_user_identifier"] = self.request.user.get_username()
+        admin_username = settings.SERVICENOW_USERNAME.strip()
+        context["is_feedback_admin"] = (
+            bool(admin_username) and self.request.user.get_username() == admin_username
+        )
         return context
 
 

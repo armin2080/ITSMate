@@ -657,6 +657,9 @@
         {% endif %}
         <span class="status-line"><span class="status-dot"></span>Connected to local backend</span>
         <a href="/feedback/" class="pill" style="text-decoration:none;">Send feedback</a>
+        {% if is_feedback_admin %}
+          <a href="{% url 'feedback-list' %}" class="pill" style="text-decoration:none;">View feedback</a>
+        {% endif %}
         <button id="reset-chat" class="pill" type="button">Reset chat memory</button>
       </div>
     </header>
